@@ -3,7 +3,6 @@
 		//{"urls": ["stun:stun.l.google.com:19302"]}
 	];
 
-	var peers = [];
 	var peersByID = {};
 	var channels = [];
 
@@ -35,28 +34,36 @@
 					peer.setLocalDescription(offer);
 				})
 				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
+
+			fetch('getOffer.php')
+				.then(response => response.json())
+				.then(onSignal)
+				.catch(ex => console.log('parsing failed', ex));
+
+			fetch('getAnswer.php?peerID=' + peerID)
+				.then(response => response.json())
+				.then(onSignal)
+				.catch(ex => console.log('parsing failed', ex));
 		},
 
 		getOfferButton: function() {
 			fetch('getOffer.php')
 				.then(response => response.json())
-				.then(json => {
-					if (!json.peerID)
-						return;
-
-					createPeer(json.peerID);
-					onSignal(json);
-				})
+				.then(onSignal)
 				.catch(ex => console.log('parsing failed', ex));
 		},
 
 		getAnswerButton: function() {
 			for (var peerID in peersByID) {
+				console.log('getAnswer', peersByID[peerID]);
+
+				//if (peersByID[peerID].iceConnectionState !== 'new')
+				if (peersByID[peerID].signalingState !== 'have-local-offer')
+					continue;
+
 				fetch('getAnswer.php?peerID=' + peerID)
 					.then(response => response.json())
-					.then(json => {
-						onSignal(json);
-					})
+					.then(onSignal)
 					.catch(ex => console.log('parsing failed', ex));
 			}
 		},
@@ -67,51 +74,6 @@
 			inputs.messageBox.value = "";
 		}
 	};
-
-	function sendSignal(signal) {
-		console.log('sendSignal', signal);
-		
-		var data = new FormData();
-		data.append('peerID', signal.peerID);
-		data.append('sdp', JSON.stringify(signal.sdp));
-
-		fetch('createPeer.php', {method: 'post', body: data});
-	}
-
-	function onSignal(signal) {
-		console.log('onSignal', signal);
-
-		var peer = peersByID[signal.peerID];
-
-		peer.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(() => {
-			if (peer.remoteDescription.type === 'offer') {
-				peer.createAnswer()
-					.then(anwser => {
-						console.log('createAnswer', anwser);
-						peer.setLocalDescription(anwser);
-					});
-			}
-		});
-	}
-
-	function showMessage(from, message) {
-		var time = new Date().toTimeString().substr(0, 8);
-		inputs.receiveBox.value += time + ' ' + from + ': ' + message + '\n';
-	}
-
-	function sendMessage(message) {
-		for (var i = 0; i < channels.length; i++)
-			channels[i].send(message);
-
-		showMessage('me', message);
-	}
-
-	function addChannel(channel) {
-		channel.onmessage = channelMessageHandle;
-		channel.onopen = channelStatusHandle;
-		channel.onclose = channelStatusHandle;
-		channels.push(channel);
-	}
 
 	function createPeer(peerID) {
 		var peer = new RTCPeerConnection({
@@ -140,6 +102,59 @@
 		peersByID[peerID] = peer;
 
 		return peer;
+	}
+
+	function sendSignal(signal) {
+		console.log('sendSignal', signal);
+		
+		var data = new FormData();
+		data.append('peerID', signal.peerID);
+		data.append('sdp', JSON.stringify(signal.sdp));
+
+		fetch('createPeer.php', {method: 'post', body: data});
+	}
+
+	function onSignal(signal) {
+		console.log('onSignal', signal);
+
+		if (!signal.sdp)
+			return;
+
+		if (signal.sdp.type === 'offer')
+			createPeer(signal.peerID);
+
+		var peer = peersByID[signal.peerID];
+
+		peer.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(() => {
+			if (peer.remoteDescription.type === 'offer') {
+				peer.createAnswer()
+					.then(anwser => {
+						console.log('createAnswer', anwser);
+						peer.setLocalDescription(anwser);
+					});
+			}
+		});
+	}
+
+	function showMessage(from, message) {
+		var time = new Date().toTimeString().substr(0, 8);
+		inputs.receiveBox.value += time + ' ' + from + ': ' + message + '\n';
+	}
+
+	function sendMessage(message) {
+		for (var i = 0; i < channels.length; i++) {
+			if (channels[i].readyState === 'open')
+				channels[i].send(message);
+		}
+
+		showMessage('me', message);
+	}
+
+	function addChannel(channel) {
+		channel.onmessage = channelMessageHandle;
+		channel.onopen = channelStatusHandle;
+		channel.onclose = channelStatusHandle;
+		channels.push(channel);
 	}
 
 	function channelMessageHandle(e) {
