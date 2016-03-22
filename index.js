@@ -1,4 +1,5 @@
 (function(){
+	var lastEventId = new Date().getTime() / 1000;
 	var userID = 'u' + makeID();
 
 	var iceServers = [
@@ -22,6 +23,8 @@
 		[].slice.call(document.querySelectorAll('button')).forEach(button => {
 			button.addEventListener('click', handles[button.name], false);
 		});
+
+		checkEvents();
 	}
 
 	var handles = {
@@ -73,7 +76,14 @@
 			console.log('sendHandle', inputs.messageBox.value);
 			sendMessage(inputs.messageBox.value);
 			inputs.messageBox.value = "";
-		}
+		},
+
+		sendEventButton: function() {
+			sendEvent({
+				time: new Date().getTime() / 1000,
+				userID: userID,
+			});
+		},
 	};
 
 	function makeID() {
@@ -108,6 +118,31 @@
 
 	function postJson(url, data) {
 		return fetch(url, {method: 'post', body: buildData(data)}).then(response => response.json());
+	}
+
+	function sendEvent(data) {
+		postJson('events.php', {
+			action: 'send',
+			data: JSON.stringify(data)
+		}).then(data => console.log(sendEvent, data));
+	}
+
+	function checkEvents() {
+		postJson('events.php', {
+			action: 'check',
+			lastEventId: lastEventId
+		}).then(data => {
+			lastEventId = data.lastEventId;
+			data.events.forEach(onEvent);
+			setTimeout(checkEvents, 1);
+		}).catch(e => {
+			console.log(checkEvents, e);
+			setTimeout(checkEvents, 1);
+		});
+	}
+
+	function onEvent(e) {
+		console.log(onEvent, e);
 	}
 
 	function createPeer(peerID) {
