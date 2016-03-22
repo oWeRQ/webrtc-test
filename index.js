@@ -1,9 +1,12 @@
 (function(){
+	var userID = 'u' + makeID();
+
 	var iceServers = [
 		//{"urls": ["stun:stun.l.google.com:19302"]}
 	];
 
 	var peersByID = {};
+	var peersByUser = {};
 	var channels = [];
 
 	var inputs = {};
@@ -23,7 +26,7 @@
 
 	var handles = {
 		createOfferButton: function() {
-			var peerID = new Date().getTime();
+			var peerID = 'p' + makeID();
 			var peer = createPeer(peerID);
 
 			addChannel(peer.createDataChannel('sendChannel'));
@@ -35,22 +38,20 @@
 				})
 				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
 
-			fetch('getOffer.php')
-				.then(response => response.json())
-				.then(onSignal)
-				.catch(ex => console.log('parsing failed', ex));
+			getJson('getOffer.php', {
+				userID: userID,
+			}).then(onSignal);
 
-			fetch('getAnswer.php?peerID=' + peerID)
-				.then(response => response.json())
-				.then(onSignal)
-				.catch(ex => console.log('parsing failed', ex));
+			getJson('getAnswer.php', {
+				userID: userID,
+				peerID: peerID,
+			}).then(onSignal);
 		},
 
 		getOfferButton: function() {
-			fetch('getOffer.php')
-				.then(response => response.json())
-				.then(onSignal)
-				.catch(ex => console.log('parsing failed', ex));
+			getJson('getOffer.php', {
+				userID: userID,
+			}).then(onSignal);
 		},
 
 		getAnswerButton: function() {
@@ -61,10 +62,10 @@
 				if (peersByID[peerID].signalingState !== 'have-local-offer')
 					continue;
 
-				fetch('getAnswer.php?peerID=' + peerID)
-					.then(response => response.json())
-					.then(onSignal)
-					.catch(ex => console.log('parsing failed', ex));
+				getJson('getAnswer.php', {
+					userID: userID,
+					peerID: peerID,
+				}).then(onSignal);
 			}
 		},
 
@@ -74,6 +75,40 @@
 			inputs.messageBox.value = "";
 		}
 	};
+
+	function makeID() {
+		//return new Date().getTime();
+		//return (Math.floor(Math.random() * 0xefff) + 0x1000).toString(16);
+		return Math.floor(Math.random() * 9000) + 1000;
+	}
+
+	function buildQuery(data) {
+		var query = [];
+
+		for (var key in data) {
+			query.push(encodeURIComponent(key) + "=" + encodeURIComponent(data[key]));
+		}
+
+		return query.join('&');
+	}
+
+	function buildData(data) {
+		var fd = new FormData();
+
+		for (var key in data) {
+			fd.set(key, data[key]);
+		}
+
+		return fd;
+	}
+
+	function getJson(url, data) {
+		return fetch(url + '?' + buildQuery(data)).then(response => response.json());
+	}
+
+	function postJson(url, data) {
+		return fetch(url, {method: 'post', body: buildData(data)}).then(response => response.json());
+	}
 
 	function createPeer(peerID) {
 		var peer = new RTCPeerConnection({
@@ -107,11 +142,11 @@
 	function sendSignal(signal) {
 		console.log('sendSignal', signal);
 		
-		var data = new FormData();
-		data.append('peerID', signal.peerID);
-		data.append('sdp', JSON.stringify(signal.sdp));
-
-		fetch('createPeer.php', {method: 'post', body: data});
+		postJson('createPeer.php', {
+			userID: userID,
+			peerID: signal.peerID,
+			sdp: JSON.stringify(signal.sdp),
+		});
 	}
 
 	function onSignal(signal) {
@@ -125,15 +160,16 @@
 
 		var peer = peersByID[signal.peerID];
 
-		peer.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(() => {
-			if (peer.remoteDescription.type === 'offer') {
-				peer.createAnswer()
-					.then(anwser => {
-						console.log('createAnswer', anwser);
-						peer.setLocalDescription(anwser);
-					});
-			}
-		});
+		peer.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+			.then(() => {
+				if (peer.remoteDescription.type === 'offer') {
+					peer.createAnswer()
+						.then(anwser => {
+							console.log('createAnswer', anwser);
+							peer.setLocalDescription(anwser);
+						});
+				}
+			});
 	}
 
 	function showMessage(from, message) {
