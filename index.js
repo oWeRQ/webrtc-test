@@ -136,26 +136,35 @@
 	}
 
 	function checkEvents() {
-		postJson('events.php', {
-			action: 'check',
-			lastEventId: lastEventId
-		}).then(data => {
-			lastEventId = data.lastEventId;
-			data.events.forEach(onEvent);
-			setTimeout(checkEvents, 1);
-		}).catch(e => {
-			console.log(checkEvents, e);
-			setTimeout(checkEvents, 1);
-		});
+		if (window.EventSource) {
+			var source = new EventSource('events.php?' + buildQuery({
+				action: 'stream',
+				lastEventId: lastEventId,
+			}));
+			source.onmessage = onEvent;
+		} else {
+			postJson('events.php', {
+				action: 'check',
+				lastEventId: lastEventId
+			}).then(data => {
+				lastEventId = data.lastEventId;
+				data.events.forEach(onEvent);
+				setTimeout(checkEvents, 1);
+			}).catch(e => {
+				console.log(checkEvents, e);
+				setTimeout(checkEvents, 1);
+			});
+		}
 	}
 
 	function onEvent(e) {
 		console.log(onEvent, e);
 
-		var eventAction = e.data.type + 'Event';
+		var data = JSON.parse(e.data);
+		var eventAction = data.type + 'Event';
 
 		if (handles[eventAction])
-			handles[eventAction](e.data);
+			handles[eventAction](data);
 	}
 
 	function createPeer(onReady) {
