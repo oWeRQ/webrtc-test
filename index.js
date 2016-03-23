@@ -3,7 +3,6 @@
 		//{"urls": ["stun:stun.l.google.com:19302"]}
 	];
 
-	var peersByID = {};
 	var peersByUser = {};
 	var channels = [];
 
@@ -32,67 +31,10 @@
 	}
 
 	var handles = {
-		createOfferButton: function() {
-			var peerID = 'p' + makeID();
-			var peer = createPeer(peer => {
-				sendSignal({
-					peerID: peerID,
-					sdp: peer.localDescription
-				});
-			});
-
-			peersByID[peerID] = peer;
-			addChannel(peer.createDataChannel('sendChannel'));
-				
-			peer.createOffer()
-				.then(offer => {
-					console.log('createOffer', offer);
-					peer.setLocalDescription(offer);
-				})
-				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
-
-			getJson('getOffer.php', {
-				userID: userID,
-			}).then(onSignal);
-
-			getJson('getAnswer.php', {
-				userID: userID,
-				peerID: peerID,
-			}).then(onSignal);
-		},
-
-		getOfferButton: function() {
-			getJson('getOffer.php', {
-				userID: userID,
-			}).then(onSignal);
-		},
-
-		getAnswerButton: function() {
-			for (var peerID in peersByID) {
-				console.log('getAnswer', peersByID[peerID]);
-
-				//if (peersByID[peerID].iceConnectionState !== 'new')
-				if (peersByID[peerID].signalingState !== 'have-local-offer')
-					continue;
-
-				getJson('getAnswer.php', {
-					userID: userID,
-					peerID: peerID,
-				}).then(onSignal);
-			}
-		},
-
 		sendButton: function() {
-			console.log('sendHandle', inputs.messageBox.value);
+			console.log(handles.sendButton, inputs.messageBox.value);
 			sendMessage(inputs.messageBox.value);
 			inputs.messageBox.value = "";
-		},
-
-		sendEventButton: function() {
-			sendEvent({
-				time: new Date().getTime() / 1000,
-				userID: userID,
-			});
 		},
 
 		newUserEvent: function(data) {
@@ -117,7 +59,7 @@
 				
 			peer.createOffer()
 				.then(offer => {
-					console.log('createOffer', offer);
+					console.log(peer.createOffer, offer);
 					peer.setLocalDescription(offer);
 				})
 				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
@@ -147,7 +89,7 @@
 					if (peer.remoteDescription.type === 'offer') {
 						peer.createAnswer()
 							.then(anwser => {
-								console.log('createAnswer', anwser);
+								console.log(peer.createAnswer, anwser);
 								peer.setLocalDescription(anwser);
 							});
 					}
@@ -156,8 +98,6 @@
 	};
 
 	function makeID() {
-		//return new Date().getTime();
-		//return (Math.floor(Math.random() * 0xefff) + 0x1000).toString(16);
 		return Math.floor(Math.random() * 9000) + 1000;
 	}
 
@@ -224,66 +164,23 @@
 			'iceServers': iceServers
 		});
 
-		peer.onsignalingstatechange = e => console.log('onSignalingStateChange', e.target.signalingState);
-		peer.oniceconnectionstatechange = e => console.log('onIceConnectionStateChange', e.target.iceConnectionState, 'iceGatheringState', e.target.iceGatheringState);
-		peer.onnegotiationneeded = e => console.log('onNegotiationNeeded');
+		peer.onsignalingstatechange = e => console.log(peer.onsignalingstatechange, e.target.signalingState);
+		peer.oniceconnectionstatechange = e => console.log(peer.oniceconnectionstatechange, e.target.iceConnectionState, 'iceGatheringState', e.target.iceGatheringState);
+		peer.onnegotiationneeded = e => console.log(peer.onnegotiationneeded);
 
 		peer.ondatachannel = e => {
-			console.log('onDataChannel', e.channel);
+			console.log(peer.ondatachannel, e.channel);
 			addChannel(e.channel);
 		};
 
 		peer.onicecandidate = e => {
-			console.log('onIceCandidate', e.candidate);
+			console.log(peer.onicecandidate, e.candidate);
 			if (!e.candidate) {
 				onReady(peer);
-				//sendSignal({
-				//	peerID: peerID,
-				//	sdp: peer.localDescription
-				//});
 			}
 		};
 
 		return peer;
-	}
-
-	function sendSignal(signal) {
-		console.log('sendSignal', signal);
-		
-		postJson('createPeer.php', {
-			userID: userID,
-			peerID: signal.peerID,
-			sdp: JSON.stringify(signal.sdp),
-		});
-	}
-
-	function onSignal(signal) {
-		console.log('onSignal', signal);
-
-		if (!signal.sdp)
-			return;
-
-		if (signal.sdp.type === 'offer') {
-			peersByID[signal.peerID] = createPeer(peer => {
-				sendSignal({
-					peerID: signal.peerID,
-					sdp: peer.localDescription
-				});
-			});
-		}
-
-		var peer = peersByID[signal.peerID];
-
-		peer.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-			.then(() => {
-				if (peer.remoteDescription.type === 'offer') {
-					peer.createAnswer()
-						.then(anwser => {
-							console.log('createAnswer', anwser);
-							peer.setLocalDescription(anwser);
-						});
-				}
-			});
 	}
 
 	function showMessage(from, message) {
@@ -308,12 +205,12 @@
 	}
 
 	function channelMessageHandle(e) {
-		console.log('channelMessageHandle', e);
+		console.log(channelMessageHandle, e);
 		showMessage('other', e.data);
 	}
 
 	function channelStatusHandle(e) {
-		console.log('channelStatusHandle', e.target.readyState);
+		console.log(channelStatusHandle, e.target.readyState);
 		showMessage('channel', e.target.readyState);
 
 		if (e.target.readyState === 'closed') {
