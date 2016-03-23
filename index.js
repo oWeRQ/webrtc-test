@@ -11,12 +11,6 @@
 	var userID = 'u' + makeID();
 	var lastEventId = new Date().getTime() / 1000;
 
-	checkEvents();
-	sendEvent({
-		type: 'newUser',
-		userID: userID,
-	});
-
 	function startup() {
 		//for (let input of document.querySelectorAll('input, textarea, select')) {
 		[].slice.call(document.querySelectorAll('input, textarea, select')).forEach(input => {
@@ -27,6 +21,14 @@
 		//for (let button of document.querySelectorAll('button')) {
 		[].slice.call(document.querySelectorAll('button')).forEach(button => {
 			button.addEventListener('click', handles[button.name], false);
+		});
+
+		graph.init("#graph");
+
+		checkEvents();
+		sendEvent({
+			type: 'newUser',
+			userID: userID,
 		});
 	}
 
@@ -55,7 +57,7 @@
 			peersByUser[data.userID] = peer;
 
 			addChannel(peer.createDataChannel('sendChannel'));
-				
+
 			peer.createOffer()
 				.then(offer => {
 					console.log(peer.createOffer, offer);
@@ -66,6 +68,8 @@
 
 		connectUserEvent: function(data) {
 			console.log(handles.connectUserEvent, data);
+
+			graph.addLink({source: data.userID, target: data.toUserID, type: data.sdp.type});
 
 			if (!data.sdp || data.toUserID !== userID)
 				return;
@@ -226,6 +230,119 @@
 			channels.splice(channels.indexOf(e.target), 1);
 		}
 	}
-	
+
+	var graph = {
+		nodes: [],
+		links: [],
+
+		width: 800,
+		height: 380,
+
+		force: null,
+		svg: null,
+		path: null,
+		circle: null,
+		text: null,
+
+		tick() {
+			graph.path.attr("d", graph.linkArc);
+			graph.circle.attr("transform", graph.transform);
+			graph.text.attr("transform", graph.transform);
+		},
+
+		linkArc(d) {
+			var dx = d.target.x - d.source.x,
+			dy = d.target.y - d.source.y,
+			dr = Math.sqrt(dx * dx + dy * dy);
+			return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+		},
+
+		transform(d) {
+			return "translate(" + d.x + "," + d.y + ")";
+		},
+
+		init(el) {
+			graph.force = d3.layout.force()
+				.nodes(graph.nodes)
+				.links(graph.links)
+				.size([graph.width, graph.height])
+				.on("tick", graph.tick)
+				.linkDistance(100)
+				.charge(-300);
+
+			graph.svg = d3.select(el).append("svg")
+				.attr("width", graph.width)
+				.attr("height", graph.height);
+
+			graph.svg.append("defs").selectAll("marker")
+				.data(["offer", "answer"])
+				.enter().append("marker")
+					.attr("id", d => d)
+					.attr("viewBox", "0 -5 10 10")
+					.attr("refX", 15)
+					.attr("refY", -1.5)
+					.attr("markerWidth", 6)
+					.attr("markerHeight", 6)
+					.attr("orient", "auto")
+					.append("path")
+						.attr("d", "M0,-5L10,0L0,5");
+
+			graph.path = graph.svg.append("g").selectAll("path");
+			graph.circle = graph.svg.append("g").selectAll("circle");
+			graph.text = graph.svg.append("g").selectAll("text");
+		},
+
+		getNodeIndex(id) {
+			for (var i = 0, len = graph.nodes.length; i < len; i += 1) {
+				if (graph.nodes[i].id === id)
+					return i;
+			}
+			return -1;
+		},
+
+		updateGraph() {
+			graph.path = graph.path.data(graph.links);
+			graph.circle = graph.circle.data(graph.nodes);
+			graph.text = graph.text.data(graph.nodes);
+
+			graph.path
+				.enter().append("path")
+					.attr("class", d => "link " + d.type)
+					.attr("marker-end", d => "url(#" + d.type + ")");
+
+			graph.circle
+				.enter().append("circle")
+					.attr("r", 6)
+					.style("fill", d => d.id === userID ? '#093' : '#ccc')
+					.call(graph.force.drag);
+
+			graph.text
+				.enter().append("text")
+					.attr("x", 8)
+					.attr("y", ".31em")
+					.text(d => d.id);
+
+			graph.path.exit().remove();
+			graph.circle.exit().remove();
+			graph.text.exit().remove();
+
+			graph.force.start();
+		},
+
+		addLink(link) {
+			if (!~graph.getNodeIndex(link.source))
+				graph.nodes.push({id: link.source});
+
+			if (!~graph.getNodeIndex(link.target))
+				graph.nodes.push({id: link.target});
+
+			link.source = graph.getNodeIndex(link.source);
+			link.target = graph.getNodeIndex(link.target);
+			graph.links.push(link);
+
+			graph.updateGraph();
+		},
+	};
+
 	window.addEventListener('load', startup, false);
 })();
