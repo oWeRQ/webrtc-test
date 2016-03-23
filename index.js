@@ -43,7 +43,6 @@
 			if (data.userID === userID)
 				return;
 
-			var peerID = 'p' + makeID();
 			var peer = createPeer(peer => {
 				sendEvent({
 					'type': 'connectUser',
@@ -115,7 +114,7 @@
 		var fd = new FormData();
 
 		for (var key in data) {
-			fd.set(key, data[key]);
+			fd.append(key, data[key]);
 		}
 
 		return fd;
