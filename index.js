@@ -27,7 +27,7 @@
 
 		checkEvents();
 		sendEvent({
-			type: 'newUser',
+			type: 'join',
 			userID: userID,
 		});
 	}
@@ -39,15 +39,17 @@
 			inputs.messageBox.value = "";
 		},
 
-		newUserEvent: function(data) {
-			console.log(handles.newUserEvent, data);
+		joinEvent: function(data) {
+			console.log(handles.joinEvent, data);
+
+			showMessage('join', data.userID);
 
 			if (data.userID === userID)
 				return;
 
 			var peer = createPeer(peer => {
 				sendEvent({
-					'type': 'connectUser',
+					'type': 'connect',
 					'userID': userID,
 					'toUserID': data.userID,
 					'sdp': peer.localDescription,
@@ -66,8 +68,8 @@
 				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
 		},
 
-		connectUserEvent: function(data) {
-			console.log(handles.connectUserEvent, data);
+		connectEvent: function(data) {
+			console.log(handles.connectEvent, data);
 
 			graph.addLink({source: data.userID, target: data.toUserID, type: data.sdp.type});
 
@@ -77,7 +79,7 @@
 			if (data.sdp.type === 'offer') {
 				peersByUser[data.userID] = createPeer(peer => {
 					sendEvent({
-						'type': 'connectUser',
+						'type': 'connect',
 						'userID': userID,
 						'toUserID': data.userID,
 						'sdp': peer.localDescription,
@@ -235,8 +237,8 @@
 		nodes: [],
 		links: [],
 
-		width: 800,
-		height: 380,
+		width: 725,
+		height: 300,
 
 		force: null,
 		svg: null,
