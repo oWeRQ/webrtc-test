@@ -1,7 +1,4 @@
 (function(){
-	var lastEventId = new Date().getTime() / 1000;
-	var userID = 'u' + makeID();
-
 	var iceServers = [
 		//{"urls": ["stun:stun.l.google.com:19302"]}
 	];
@@ -11,6 +8,15 @@
 	var channels = [];
 
 	var inputs = {};
+
+	var userID = 'u' + makeID();
+	var lastEventId = new Date().getTime() / 1000;
+
+	checkEvents();
+	sendEvent({
+		type: 'newUser',
+		userID: userID,
+	});
 
 	function startup() {
 		//for (let input of document.querySelectorAll('input, textarea, select')) {
@@ -23,15 +29,19 @@
 		[].slice.call(document.querySelectorAll('button')).forEach(button => {
 			button.addEventListener('click', handles[button.name], false);
 		});
-
-		checkEvents();
 	}
 
 	var handles = {
 		createOfferButton: function() {
 			var peerID = 'p' + makeID();
-			var peer = createPeer(peerID);
+			var peer = createPeer(peer => {
+				sendSignal({
+					peerID: peerID,
+					sdp: peer.localDescription
+				});
+			});
 
+			peersByID[peerID] = peer;
 			addChannel(peer.createDataChannel('sendChannel'));
 				
 			peer.createOffer()
@@ -84,6 +94,65 @@
 				userID: userID,
 			});
 		},
+
+		newUserEvent: function(data) {
+			console.log(handles.newUserEvent, data);
+
+			if (data.userID === userID)
+				return;
+
+			var peerID = 'p' + makeID();
+			var peer = createPeer(peer => {
+				sendEvent({
+					'type': 'connectUser',
+					'userID': userID,
+					'toUserID': data.userID,
+					'sdp': peer.localDescription,
+				});
+			});
+
+			peersByUser[data.userID] = peer;
+
+			addChannel(peer.createDataChannel('sendChannel'));
+				
+			peer.createOffer()
+				.then(offer => {
+					console.log('createOffer', offer);
+					peer.setLocalDescription(offer);
+				})
+				.catch(e => console.log('Unable to create an offer: ' + e.toString()));
+		},
+
+		connectUserEvent: function(data) {
+			console.log(handles.connectUserEvent, data);
+
+			if (!data.sdp || data.toUserID !== userID)
+				return;
+
+			if (data.sdp.type === 'offer') {
+				peersByUser[data.userID] = createPeer(peer => {
+					sendEvent({
+						'type': 'connectUser',
+						'userID': userID,
+						'toUserID': data.userID,
+						'sdp': peer.localDescription,
+					});
+				});
+			}
+
+			var peer = peersByUser[data.userID];
+
+			peer.setRemoteDescription(new RTCSessionDescription(data.sdp))
+				.then(() => {
+					if (peer.remoteDescription.type === 'offer') {
+						peer.createAnswer()
+							.then(anwser => {
+								console.log('createAnswer', anwser);
+								peer.setLocalDescription(anwser);
+							});
+					}
+				});
+		}
 	};
 
 	function makeID() {
@@ -143,9 +212,14 @@
 
 	function onEvent(e) {
 		console.log(onEvent, e);
+
+		var eventAction = e.data.type + 'Event';
+
+		if (handles[eventAction])
+			handles[eventAction](e.data);
 	}
 
-	function createPeer(peerID) {
+	function createPeer(onReady) {
 		var peer = new RTCPeerConnection({
 			'iceServers': iceServers
 		});
@@ -162,14 +236,13 @@
 		peer.onicecandidate = e => {
 			console.log('onIceCandidate', e.candidate);
 			if (!e.candidate) {
-				sendSignal({
-					peerID: peerID,
-					sdp: peer.localDescription
-				});
+				onReady(peer);
+				//sendSignal({
+				//	peerID: peerID,
+				//	sdp: peer.localDescription
+				//});
 			}
 		};
-
-		peersByID[peerID] = peer;
 
 		return peer;
 	}
@@ -190,8 +263,14 @@
 		if (!signal.sdp)
 			return;
 
-		if (signal.sdp.type === 'offer')
-			createPeer(signal.peerID);
+		if (signal.sdp.type === 'offer') {
+			peersByID[signal.peerID] = createPeer(peer => {
+				sendSignal({
+					peerID: signal.peerID,
+					sdp: peer.localDescription
+				});
+			});
+		}
 
 		var peer = peersByID[signal.peerID];
 
