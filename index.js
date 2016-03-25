@@ -134,6 +134,16 @@
 		return fetch(url, {method: 'post', body: buildData(data)}).then(response => response.json());
 	}
 
+	function postJsonXhr(url, data) {
+		return new Promise((resolve, reject) => {
+			var xhr = new XMLHttpRequest();
+			xhr.open('post', url, true);
+			xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+			xhr.onerror = () => reject(xhr);
+			xhr.send(buildData(data));
+		});
+	}
+
 	function sendEvent(data) {
 		postJson('events.php', {
 			action: 'send',
