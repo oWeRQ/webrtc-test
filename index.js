@@ -4,7 +4,7 @@
 	];
 
 	var peersByUser = {};
-	var channels = [];
+	var channelsByUser = {};
 
 	var inputs = {};
 
@@ -58,7 +58,7 @@
 
 			peersByUser[data.userID] = peer;
 
-			addChannel(peer.createDataChannel('sendChannel'));
+			addChannel(peer, peer.createDataChannel('sendChannel'));
 
 			peer.createOffer()
 				.then(offer => {
@@ -155,6 +155,7 @@
 		if (window.EventSource) {
 			var source = new EventSource('events.php?action=stream');
 			source.onmessage = onEvent;
+			source.onerror = e => console.log(source.onerror, e);
 		} else {
 			postJson('events.php', {
 				action: 'check',
@@ -191,7 +192,7 @@
 
 		peer.ondatachannel = e => {
 			console.log(peer.ondatachannel, e.channel);
-			addChannel(e.channel);
+			addChannel(peer, e.channel);
 		};
 
 		peer.onicecandidate = e => {
@@ -210,33 +211,60 @@
 	}
 
 	function sendMessage(message) {
-		for (var i = 0; i < channels.length; i++) {
-			if (channels[i].readyState === 'open')
-				channels[i].send(message);
+		for (var channelUserID in channelsByUser) {
+			var channel = channelsByUser[channelUserID];
+			if (channel.readyState === 'open')
+				channel.send(message);
 		}
 
-		showMessage('me', message);
+		showMessage(userID + '(me)', message);
 	}
 
-	function addChannel(channel) {
+	function getUserIdByPeer(peer) {
+		for (var peerUserID in peersByUser) {
+			if (peersByUser[peerUserID] === peer)
+				return peerUserID;
+		}
+
+		return null;
+	}
+
+	function getUserIdByChannel(channel) {
+		for (var channelUserID in channelsByUser) {
+			if (channelsByUser[channelUserID] === channel)
+				return channelUserID;
+		}
+
+		return null;
+	}
+
+	function removeUser(id) {
+		delete peersByUser[id];
+		delete channelsByUser[id];
+		graph.removeNode(id);
+	}
+
+	function addChannel(peer, channel) {
+		var peerUserId = getUserIdByPeer(peer);
 		channel.onmessage = channelMessageHandle;
 		channel.onopen = channelStatusHandle;
 		channel.onclose = channelStatusHandle;
-		channels.push(channel);
+		channelsByUser[peerUserId] = channel;
 	}
 
 	function channelMessageHandle(e) {
+		var channelUserID = getUserIdByChannel(e.target);
 		console.log(channelMessageHandle, e);
-		showMessage('other', e.data);
+		showMessage(channelUserID, e.data);
 	}
 
 	function channelStatusHandle(e) {
+		var channelUserID = getUserIdByChannel(e.target);
 		console.log(channelStatusHandle, e.target.readyState);
-		showMessage('channel', e.target.readyState);
+		showMessage('channel', channelUserID + ' ' + e.target.readyState);
 
 		if (e.target.readyState === 'closed') {
-			//channels = channels.filter(c => c !== e.target);
-			channels.splice(channels.indexOf(e.target), 1);
+			removeUser(channelUserID);
 		}
 	}
 
@@ -350,6 +378,10 @@
 			graph.links.push(link);
 
 			graph.updateGraph();
+		},
+
+		removeNode(id) {
+
 		},
 	};
 
