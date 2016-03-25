@@ -55,7 +55,7 @@ class Events
 				$lastEventId = $event['id'];
 			}
 
-			usleep(2500);
+			usleep(250);
 		}
 	}
 
