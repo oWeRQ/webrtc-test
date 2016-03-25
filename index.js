@@ -143,10 +143,7 @@
 
 	function checkEvents() {
 		if (window.EventSource) {
-			var source = new EventSource('events.php?' + buildQuery({
-				action: 'stream',
-				lastEventId: lastEventId,
-			}));
+			var source = new EventSource('events.php?action=stream');
 			source.onmessage = onEvent;
 		} else {
 			postJson('events.php', {
@@ -164,7 +161,7 @@
 	}
 
 	function onEvent(e) {
-		console.log(onEvent, e);
+		//console.log(onEvent, e);
 
 		var data = JSON.parse(e.data);
 		var eventAction = data.type + 'Event';
