@@ -43,7 +43,9 @@ class Events
 		header('Content-Type: text/event-stream');
 		header('Cache-Control: no-cache');
 
-		echo 'retry: 10000'.PHP_EOL.PHP_EOL;
+		$this->streamSend([
+			'retry' => 10000,
+		]);
 
 		$headers = apache_request_headers();
 		if (!empty($headers['Last-Event-ID']))
